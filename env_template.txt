@@ -1,0 +1,11 @@
+# Copy this file to .env and fill in your credentials
+# Piazza Credentials
+PIAZZA_EMAIL=your_email@mit.edu
+PIAZZA_PASSWORD=your_password
+
+# Piazza Network ID (found in URL: piazza.com/class/<NETWORK_ID>)
+PIAZZA_NETWORK_ID=your_network_id
+
+# Anthropic API Key (for LLM analysis)
+ANTHROPIC_API_KEY=your_anthropic_api_key
+
