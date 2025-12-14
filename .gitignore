@@ -43,3 +43,6 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Browser data (for Playwright sessions)
+.browser_data/
+

@@ -12,6 +12,7 @@ from rich.panel import Panel
 
 import config
 from scraper import PiazzaAuth, PostFetcher, DataProcessor
+from scraper.browser_scraper import BrowserScraper
 from analyzer import FeedbackAnalyzer
 
 console = Console()
@@ -49,21 +50,42 @@ def validate_config():
     return True
 
 
+def cmd_login(args):
+    """Interactive login for SSO authentication."""
+    console.print(Panel("Piazza Login", style="bold green"))
+    
+    scraper = BrowserScraper(headless=False)
+    
+    if scraper.is_logged_in():
+        console.print("[green]✓ Already logged in with saved session[/green]")
+        relogin = input("Do you want to re-login? (y/N): ").strip().lower()
+        if relogin != 'y':
+            return 0
+    
+    if scraper.login_interactive():
+        return 0
+    return 1
+
+
 def cmd_scrape(args):
     """Run the scraper to fetch posts from Piazza."""
     console.print(Panel("Starting Piazza Scraper", style="bold green"))
     
-    # Authenticate
-    auth = PiazzaAuth(config.PIAZZA_EMAIL, config.PIAZZA_PASSWORD)
-    if not auth.login():
-        return 1
+    # Use browser-based scraper (works with SSO)
+    scraper = BrowserScraper(headless=args.headless if hasattr(args, 'headless') else True)
     
-    # Get network
-    network = auth.get_network(config.PIAZZA_NETWORK_ID)
+    # Check if logged in
+    if not scraper.is_logged_in():
+        console.print("[yellow]No saved session found. Starting interactive login...[/yellow]")
+        if not scraper.login_interactive():
+            return 1
     
     # Fetch posts
-    fetcher = PostFetcher(network)
-    posts = fetcher.fetch_all_posts(limit=args.limit)
+    posts = scraper.fetch_all_posts(limit=args.limit)
+    
+    if not posts:
+        console.print("[red]✗ No posts fetched. Try running 'python main.py login' first.[/red]")
+        return 1
     
     # Process and categorize
     processor = DataProcessor()
@@ -191,11 +213,18 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
+    # Login command
+    subparsers.add_parser("login", help="Interactive login (for SSO authentication)")
+    
     # Scrape command
     scrape_parser = subparsers.add_parser("scrape", help="Scrape posts from Piazza")
     scrape_parser.add_argument(
         "--limit", "-l", type=int, default=None,
         help="Limit number of posts to fetch (default: all)"
+    )
+    scrape_parser.add_argument(
+        "--headless", action="store_true",
+        help="Run browser in headless mode"
     )
     
     # Analyze command
@@ -225,17 +254,22 @@ def main():
         parser.print_help()
         return 0
     
-    # Validate config (except for list-classes which only needs email/password)
-    if args.command != "list-classes":
-        if not validate_config():
+    # Validate config based on command
+    if args.command in ["scrape", "full"]:
+        if not config.PIAZZA_NETWORK_ID:
+            console.print("[red]✗ PIAZZA_NETWORK_ID must be set in .env[/red]")
             return 1
-    else:
+    elif args.command == "list-classes":
         if not config.PIAZZA_EMAIL or not config.PIAZZA_PASSWORD:
             console.print("[red]✗ PIAZZA_EMAIL and PIAZZA_PASSWORD must be set in .env[/red]")
             return 1
+    elif args.command == "analyze":
+        pass  # Will check for data files inside the command
+    # login command doesn't need validation
     
     # Run command
     commands = {
+        "login": cmd_login,
         "scrape": cmd_scrape,
         "analyze": cmd_analyze,
         "list-classes": cmd_list_classes,
